@@ -15,7 +15,10 @@
     <PackageTags>cloudflare;cloudflared;tunnel;trycloudflare;ngrok</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/Hsakoh/CloudflaredKit</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Hsakoh/CloudflaredKit.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 

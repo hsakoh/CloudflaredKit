@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using CloudflaredKit.Models;
@@ -27,6 +28,7 @@ public sealed partial class CloudflaredProcess : ICloudflaredProcess, IAsyncDisp
     private readonly ILogger<CloudflaredProcess> _logger;
 
     private Process? _process;
+    private int _stopRequested;
 
     /// <summary>Initializes a new instance of <see cref="CloudflaredProcess"/>.</summary>
     public CloudflaredProcess(
@@ -44,6 +46,7 @@ public sealed partial class CloudflaredProcess : ICloudflaredProcess, IAsyncDisp
     {
         // Kill any leftover process from a previous Start/Stop cycle.
         await StopAsync();
+        Interlocked.Exchange(ref _stopRequested, 0);
 
         var options = _options.CurrentValue;
 
@@ -118,8 +121,16 @@ public sealed partial class CloudflaredProcess : ICloudflaredProcess, IAsyncDisp
 
         _process.Exited += (sender, _) =>
         {
-            _logger.LogWarning("cloudflared process exited unexpectedly");
             var exitCode = sender is Process process ? process.ExitCode : -1;
+            if (Volatile.Read(ref _stopRequested) == 1)
+            {
+                _logger.LogInformation("cloudflared process exited normally (ExitCode={ExitCode})", exitCode);
+            }
+            else
+            {
+                _logger.LogWarning("cloudflared process exited unexpectedly (ExitCode={ExitCode})", exitCode);
+            }
+
             exitSource.TrySetResult(exitCode);
             urlSource.TrySetException(
                 new InvalidOperationException("cloudflared process exited before a URL was reported."));
@@ -188,6 +199,8 @@ public sealed partial class CloudflaredProcess : ICloudflaredProcess, IAsyncDisp
 
         try
         {
+            Interlocked.Exchange(ref _stopRequested, 1);
+
             // Kill the entire process tree to avoid orphaned child processes on Linux.
             _process.Kill(entireProcessTree: true);
             await _process.WaitForExitAsync();

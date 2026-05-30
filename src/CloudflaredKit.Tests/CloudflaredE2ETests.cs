@@ -262,6 +262,8 @@ public sealed class CloudflaredE2ETests
         Func<string>? getFailureDetails = null,
         TimeSpan? initialDelay = null)
     {
+        await WaitForDnsReadinessAsync(url);
+
         using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         var deadline = DateTimeOffset.UtcNow.AddSeconds(90);
         string lastResult = "No response received.";
@@ -301,6 +303,38 @@ public sealed class CloudflaredE2ETests
         Assert.Fail(
             $"Timeout: {url} did not return \"{expectedContent}\" within 90 seconds. " +
             lastResult + details);
+    }
+
+    /// <summary>
+    /// TryCloudflare may return a public URL before the runner can resolve its DNS record.
+    /// Wait for name resolution first so transient propagation lag does not fail the traffic test.
+    /// </summary>
+    private static async Task WaitForDnsReadinessAsync(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            !uri.Host.EndsWith(".trycloudflare.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(60);
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                var addresses = await Dns.GetHostAddressesAsync(uri.DnsSafeHost);
+                if (addresses.Length > 0)
+                {
+                    return;
+                }
+            }
+            catch (SocketException)
+            {
+            }
+
+            await Task.Delay(1000);
+        }
     }
 
     private static string Truncate(string value, int maxLength)

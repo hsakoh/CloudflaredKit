@@ -27,6 +27,14 @@ public interface ICloudflaredService
     TunnelInfo? ActiveTunnel { get; }
 
     /// <summary>
+    /// Raised when the cloudflared process exits unexpectedly
+    /// (i.e., not as a result of calling <see cref="StopAsync"/>).
+    /// The argument is the process exit code.
+    /// Subscribers are responsible for deciding whether and how to restart the tunnel.
+    /// </summary>
+    event Action<int>? TunnelExitedUnexpectedly;
+
+    /// <summary>
     /// Pre-downloads the <c>cloudflared</c> binary so that <see cref="StartAsync"/> is faster.
     /// Calling this method is optional; <see cref="StartAsync"/> will download on demand if needed.
     /// </summary>

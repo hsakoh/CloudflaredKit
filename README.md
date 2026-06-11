@@ -13,6 +13,7 @@ Inspired by [FluffySpoon.Ngrok](https://github.com/ffMathy/FluffySpoon.Ngrok).
 - **Automatic binary management** — Downloads and caches the `cloudflared` binary from GitHub Releases.
 - **DI support** — Works with `Microsoft.Extensions.DependencyInjection` (console apps, generic host, etc.).
 - **Lifetime hooks** — `ICloudflaredLifetimeHook` callbacks fired on tunnel creation and destruction.
+- **Unexpected-exit notification** — `ICloudflaredService.TunnelExitedUnexpectedly` event fires when `cloudflared` exits without `StopAsync` being called, so callers can implement their own restart strategy.
 
 ## Supported Platforms
 
@@ -119,6 +120,59 @@ services.AddCloudflaredLifetimeHook<MyHook>();
 ```
 
 Hooks are optional. If you only need the URL at the call site, use the return value of `StartAsync` instead.
+
+### Handling unexpected tunnel exits
+
+When `cloudflared` exits without `StopAsync` being called (e.g. a crash or OS signal),
+`ICloudflaredService` raises the `TunnelExitedUnexpectedly` event with the process exit code.
+The library intentionally does **not** restart automatically — the caller decides whether and how to retry.
+
+```csharp
+var service = provider.GetRequiredService<ICloudflaredService>();
+
+// Subscribe before starting the tunnel.
+service.TunnelExitedUnexpectedly += exitCode =>
+{
+    Console.Error.WriteLine($"cloudflared exited unexpectedly (code={exitCode})");
+    // Decide what to do: log, alert, attempt restart, etc.
+};
+
+var tunnel = await service.StartAsync();
+```
+
+**Restart example with exponential back-off:**
+
+```csharp
+service.TunnelExitedUnexpectedly += exitCode =>
+{
+    _ = RestartLoopAsync(service, CancellationToken.None);
+};
+
+static async Task RestartLoopAsync(ICloudflaredService service, CancellationToken ct)
+{
+    var delay = TimeSpan.FromSeconds(5);
+    while (!ct.IsCancellationRequested)
+    {
+        try
+        {
+            await Task.Delay(delay, ct);
+            var tunnel = await service.StartAsync(ct);
+            Console.WriteLine($"Tunnel restarted: {tunnel.PublicUrl}");
+            return;
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Restart failed: {ex.Message}");
+            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 60));
+        }
+    }
+}
+```
+
+> **Note** — `TunnelExitedUnexpectedly` is raised from a thread-pool thread (the OS process-exit callback).
+> Keep the handler short and kick off any async work with `_ = SomeAsync()` as shown above.
+> Always unsubscribe the event before calling `StopAsync` to avoid receiving a stale notification.
 
 ### Waiting for the tunnel to be ready
 

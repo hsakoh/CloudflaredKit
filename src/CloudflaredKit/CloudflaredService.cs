@@ -7,6 +7,8 @@ namespace CloudflaredKit;
 /// <summary>
 /// Default implementation of <see cref="ICloudflaredService"/>.
 /// Coordinates binary download, process management, and lifetime hooks.
+/// When the cloudflared process exits unexpectedly, <see cref="TunnelExitedUnexpectedly"/> is raised
+/// so that callers can decide whether to restart the tunnel.
 /// </summary>
 public sealed class CloudflaredService : ICloudflaredService
 {
@@ -22,6 +24,9 @@ public sealed class CloudflaredService : ICloudflaredService
     /// <inheritdoc/>
     public TunnelInfo? ActiveTunnel { get; private set; }
 
+    /// <inheritdoc/>
+    public event Action<int>? TunnelExitedUnexpectedly;
+
     /// <summary>Initializes a new instance of <see cref="CloudflaredService"/>.</summary>
     public CloudflaredService(
         ICloudflaredDownloader downloader,
@@ -35,6 +40,8 @@ public sealed class CloudflaredService : ICloudflaredService
         _hooks = hooks;
         _logger = logger;
         _options = options;
+
+        _process.UnexpectedlyExited += OnProcessUnexpectedlyExited;
     }
 
     /// <inheritdoc/>
@@ -110,6 +117,21 @@ public sealed class CloudflaredService : ICloudflaredService
 
     private static TaskCompletionSource<TunnelInfo> CreateReadySource() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Called when <see cref="ICloudflaredProcess.UnexpectedlyExited"/> fires.
+    /// Clears the active tunnel state and raises <see cref="TunnelExitedUnexpectedly"/>
+    /// to notify subscribers. Restart decisions are left entirely to the caller.
+    /// </summary>
+    private void OnProcessUnexpectedlyExited(int exitCode)
+    {
+        if (ActiveTunnel is null) return; // Already stopped — ignore stale event.
+
+        ActiveTunnel = null;
+        _readySource = CreateReadySource();
+
+        TunnelExitedUnexpectedly?.Invoke(exitCode);
+    }
 
     /// <summary>
     /// Invokes all registered lifetime hooks, logging (but not re-throwing) any hook exceptions

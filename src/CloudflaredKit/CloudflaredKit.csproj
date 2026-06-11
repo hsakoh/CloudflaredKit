@@ -9,7 +9,7 @@
 
     <!-- NuGet package metadata -->
     <PackageId>CloudflaredKit</PackageId>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Authors>Hsakoh</Authors>
     <Description>A .NET library that manages the cloudflared binary and Cloudflare Tunnel lifecycle. Supports TryCloudflare (temporary URL, no account required) and permanent tunnel modes.</Description>
     <PackageTags>cloudflare;cloudflared;tunnel;trycloudflare;ngrok</PackageTags>

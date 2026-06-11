@@ -30,6 +30,9 @@ public sealed partial class CloudflaredProcess : ICloudflaredProcess, IAsyncDisp
     private Process? _process;
     private int _stopRequested;
 
+    /// <inheritdoc/>
+    public event Action<int>? UnexpectedlyExited;
+
     /// <summary>Initializes a new instance of <see cref="CloudflaredProcess"/>.</summary>
     public CloudflaredProcess(
         IOptionsMonitor<CloudflaredOptions> options,
@@ -129,6 +132,7 @@ public sealed partial class CloudflaredProcess : ICloudflaredProcess, IAsyncDisp
             else
             {
                 _logger.LogWarning("cloudflared process exited unexpectedly (ExitCode={ExitCode})", exitCode);
+                UnexpectedlyExited?.Invoke(exitCode);
             }
 
             exitSource.TrySetResult(exitCode);
